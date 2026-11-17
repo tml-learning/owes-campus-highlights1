@@ -3,6 +3,8 @@ window.OWES_APP = (function () {
   const DATA = window.OWES_DATA;
   const SCENE = window.OWES_SCENE;
 
+  const isCompactViewport = window.innerWidth <= 900;
+
   const uiState = {
     selected: null,
     activeTab: "intro", // 'intro' | 'deep' | 'media' | 'data' | 'honors'
@@ -14,11 +16,11 @@ window.OWES_APP = (function () {
     mediaScope: "station", // 'station' | 'all' (when inside a station panel)
     view: "panorama", // 'panorama' | 'bird' | 'train' | 'list' | 'media_hub'
     showLabels: true,
-    showStationNav: true, // Left sliding station list
+    showStationNav: !isCompactViewport, // Left sliding station list
     animate: true,
-    timeMode: "day", // 'day' | 'dusk' | 'night'
+    timeMode: "day",
     tour: null,
-    showAvatarCard: true,
+    showAvatarCard: !isCompactViewport,
     avatar: {
       shirt: "#f97316",
       shirtName: "活力橘",
@@ -100,54 +102,6 @@ window.OWES_APP = (function () {
   // Top-center quote bar removed per user request
   function renderQuote() {}
 
-  // Date & Weather
-  const weekNames = ["日", "一", "二", "三", "四", "五", "六"];
-  function updateClock() {
-    const now = new Date();
-    const m = now.getMonth() + 1;
-    const d = now.getDate();
-    const w = weekNames[now.getDay()];
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    document.getElementById("wx-date").textContent = `${m} 月 ${d} 日`;
-    document.getElementById("wx-time").textContent = `星期${w}・${hh}:${mm}`;
-  }
-
-  function decodeWeatherCode(code) {
-    if (code === 0) return { text: "晴朗", icon: "☀️", kind: "clear" };
-    if (code === 1 || code === 2) return { text: "晴時多雲", icon: "🌤️", kind: "clear" };
-    if (code === 3) return { text: "多雲", icon: "⛅", kind: "cloudy" };
-    if (code === 45 || code === 48) return { text: "薄霧", icon: "🌫️", kind: "fog" };
-    if (code >= 51 && code <= 67) return { text: "陣雨", icon: "🌦️", kind: "rain" };
-    if (code >= 80 && code <= 82) return { text: "局部陣雨", icon: "🌧️", kind: "rain" };
-    if (code >= 95) return { text: "雷陣雨", icon: "⛈️", kind: "storm" };
-    return { text: "溫暖晴天", icon: "☀️", kind: "clear" };
-  }
-
-  async function fetchWeather() {
-    const { lat, lon } = DATA.school.coords;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,cloud_cover,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTaipei&forecast_days=1`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      const cur = data.current;
-      const info = decodeWeatherCode(cur.weather_code);
-      const temp = Math.round(cur.temperature_2m);
-      const minT = Math.round(data.daily.temperature_2m_min[0]);
-      const maxT = Math.round(data.daily.temperature_2m_max[0]);
-      const rainP = data.daily.precipitation_probability_max[0] ?? 0;
-
-      document.getElementById("wx-icon").textContent = info.icon;
-      document.getElementById("wx-main").textContent = `${info.text} ${temp}°C`;
-      document.getElementById("wx-sub").textContent = `${minT}°～${maxT}°・降雨 ${rainP}%`;
-      SCENE.setWeather(info.kind, cur.cloud_cover);
-    } catch (e) {
-      document.getElementById("wx-icon").textContent = "☀️";
-      document.getElementById("wx-main").textContent = "晴時多雲 26°C";
-      document.getElementById("wx-sub").textContent = "22°～28°・舒適溫暖";
-    }
-  }
-
   // Left Slide-Out Station List (左側八大特色車站導覽清單)
   function renderStationNav() {
     const navEl = document.getElementById("station-nav");
@@ -156,6 +110,7 @@ window.OWES_APP = (function () {
     if (!navEl || !listEl) return;
 
     const inOverlayMode = uiState.view === "list" || uiState.view === "media_hub";
+    document.body.classList.toggle("has-station-nav-open", !inOverlayMode && uiState.showStationNav);
     if (inOverlayMode) {
       navEl.classList.add("collapsed");
       if (openBtn) openBtn.style.display = "none";
@@ -358,6 +313,8 @@ window.OWES_APP = (function () {
       uiState.view === "media_hub" ||
       uiState.tour ||
       uiState.selected;
+
+    document.body.classList.toggle("has-avatar-card", !inOverlay && uiState.showAvatarCard);
 
     if (inOverlay) {
       cardEl.style.display = "none";
@@ -1077,13 +1034,7 @@ window.OWES_APP = (function () {
 
   function renderQuiz() {}
 
-  // Bottom Toolbar
-  const timeLabels = {
-    day: "☀️ 白天模式",
-    dusk: "🌇 黃昏模式",
-    night: "🌙 夜晚模式"
-  };
-
+  // Bottom Toolbar (只保留核心視角、站名、播放，精簡響應式排版)
   function renderToolbar() {
     const bar = document.getElementById("bottom-toolbar");
     if (!bar) return;
@@ -1093,34 +1044,13 @@ window.OWES_APP = (function () {
         <button class="tb ${uiState.view === "panorama" && !uiState.selected ? "on" : ""}" data-view="panorama" title="斜角全景">全景</button>
         <button class="tb ${uiState.view === "bird" ? "on" : ""}" data-view="bird" title="高空鳥瞰校園跑道與前庭為三合院校舍">鳥瞰</button>
         <button class="tb ${uiState.view === "train" ? "on" : ""}" data-view="train" title="跟隨活力跑者慢跑穿梭校園各站">🏃 陪跑視角</button>
-        <button class="tb ${uiState.view === "media_hub" ? "on" : ""}" id="tb-media-hub" title="瀏覽 64 篇媒體報導六大分類整理">📰 媒體專區</button>
         <button class="tb ${uiState.view === "list" ? "on" : ""}" data-view="list" title="全頁卡片清單">全頁清單</button>
       </div>
-      <div class="seg" role="group" aria-label="天色切換模式">
-        <button class="tb ${uiState.timeMode === "day" ? "on" : ""}" data-time="day" title="切換為晴朗白天校園">☀️ 白天</button>
-        <button class="tb ${uiState.timeMode === "dusk" ? "on" : ""}" data-time="dusk" title="切換為溫暖金黃黃昏校園">🌇 黃昏</button>
-        <button class="tb ${uiState.timeMode === "night" ? "on" : ""}" data-time="night" title="切換為點燈星夜校園">🌙 夜晚</button>
-      </div>
       <div class="seg">
-        <button class="tb ${uiState.showStationNav ? "on" : ""}" id="tb-nav" title="顯示或隱藏左側八大特色站點清單">📋 左側清單</button>
         <button class="tb ${uiState.showLabels ? "on" : ""}" id="tb-labels" title="顯示站點名稱">站名</button>
         <button class="tb ${!uiState.animate ? "on" : ""}" id="tb-anim" title="暫停或播放人物運動與動畫">${uiState.animate ? "暫停" : "播放"}</button>
       </div>
     `;
-
-    document.getElementById("tb-media-hub").addEventListener("click", () => {
-      if (uiState.view === "media_hub") {
-        uiState.view = "panorama";
-        SCENE.setView("panorama");
-        renderMediaHub();
-        renderStationNav();
-        renderHonorRoll();
-        renderGuideCard();
-        renderToolbar();
-      } else {
-        openMediaHub("all");
-      }
-    });
 
     bar.querySelectorAll("button[data-view]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1146,12 +1076,6 @@ window.OWES_APP = (function () {
       });
     });
 
-    document.getElementById("tb-nav").addEventListener("click", () => {
-      uiState.showStationNav = !uiState.showStationNav;
-      renderStationNav();
-      renderToolbar();
-    });
-
     document.getElementById("tb-labels").addEventListener("click", () => {
       uiState.showLabels = !uiState.showLabels;
       SCENE.setShowLabels(uiState.showLabels);
@@ -1162,16 +1086,6 @@ window.OWES_APP = (function () {
       uiState.animate = !uiState.animate;
       SCENE.setAnimate(uiState.animate);
       renderToolbar();
-    });
-
-    bar.querySelectorAll("button[data-time]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const mode = btn.getAttribute("data-time");
-        uiState.timeMode = mode;
-        SCENE.setTimeMode(mode);
-        showToast(`已切換至 ${timeLabels[mode] || mode}`);
-        renderToolbar();
-      });
     });
   }
 
@@ -1250,6 +1164,10 @@ window.OWES_APP = (function () {
     if (avatarOpenBtn) {
       avatarOpenBtn.addEventListener("click", () => {
         uiState.showAvatarCard = true;
+        if (window.innerWidth <= 767 && uiState.showStationNav) {
+          uiState.showStationNav = false;
+          renderStationNav();
+        }
         renderGuideCard();
       });
     }
@@ -1275,6 +1193,10 @@ window.OWES_APP = (function () {
     if (navOpenBtn) {
       navOpenBtn.addEventListener("click", () => {
         uiState.showStationNav = true;
+        if (window.innerWidth <= 767 && uiState.showAvatarCard) {
+          uiState.showAvatarCard = false;
+          renderGuideCard();
+        }
         renderStationNav();
         renderToolbar();
       });
@@ -1339,10 +1261,6 @@ window.OWES_APP = (function () {
         }
       }
     });
-
-    updateClock();
-    setInterval(updateClock, 15000);
-    fetchWeather();
 
     renderStationNav();
     renderHonorRoll();

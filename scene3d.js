@@ -4138,8 +4138,9 @@ window.OWES_SCENE = (function () {
       cameraTransitionTimer = 0;
       // Position camera directly on the +Z (South/Front) side so the user clearly sees the front (正面) of the station
       // and the runner facing directly toward the user!
-      camTargetLook.set(sx, 1.15, sz + 0.6);
-      camTargetPos.set(sx, 8.8, sz + 13.8);
+      const isMobile = window.innerWidth <= 760;
+      camTargetLook.set(sx, 1.15, sz + (isMobile ? 1.2 : 0.6));
+      camTargetPos.set(sx, isMobile ? 10.6 : 8.8, sz + (isMobile ? 16.5 : 13.8));
     }
 
     function showRunnerStopHighlightCard(stopInfo) {
@@ -4434,11 +4435,8 @@ window.OWES_SCENE = (function () {
     });
   }
 
-  // Lighting & Day / Dusk / Night Switchable Cycle (預設明亮白天，可切換黃昏與夜晚)
+  // Lighting (Always Bright Daytime — 畫面固定呈現明亮白天)
   function resolveTimePhase() {
-    if (state.timeMode === "dusk" || state.timeMode === "night") {
-      return state.timeMode;
-    }
     return "day";
   }
 
@@ -4454,30 +4452,6 @@ window.OWES_SCENE = (function () {
       sunI: 0.96,
       hemiI: 0.54,
       winGlow: 0.08
-    },
-    dusk: {
-      bg: "#d8a484",
-      fog: "#d8a484",
-      sun: "#ff944d",
-      hemiSky: "#e8b89a",
-      hemiGround: "#6b4830",
-      ground: "#57823d",
-      turf: "#629144",
-      sunI: 0.92,
-      hemiI: 0.48,
-      winGlow: 0.95
-    },
-    night: {
-      bg: "#162436",
-      fog: "#162436",
-      sun: "#6488b8",
-      hemiSky: "#2a4365",
-      hemiGround: "#1a202c",
-      ground: "#355238",
-      turf: "#3d5e41",
-      sunI: 0.62,
-      hemiI: 0.5,
-      winGlow: 2.1
     }
   };
 
@@ -4791,8 +4765,8 @@ window.OWES_SCENE = (function () {
     setAnimate(v) {
       state.animate = v;
     },
-    setTimeMode(m) {
-      state.timeMode = m === "dusk" || m === "night" ? m : "day";
+    setTimeMode() {
+      state.timeMode = "day";
     },
     setWeather(kind, cloud) {
       state.weatherKind = kind || "clear";
