@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>漚汪國小探索園區｜活力慢跑運動逛校園 3D 校園特色互動模型</title>
+  <meta name="description" content="臺南市將軍區漚汪國民小學 3D 校園特色探索網站——跟著活力小跑者慢跑穿梭於 PU 跑道、光電球場與前庭為三合院校舍，探索學校願景、課程創新、品格教育、多元社團、優質環境、學習花絮、榮譽榜與媒體報導。" />
+  <meta property="og:title" content="漚汪國小探索園區｜活力慢跑運動逛校園 3D 校園特色互動模型" />
+  <meta property="og:description" content="深耕課程創新，扎根品格成長——跟著活力小跑者運動慢跑逛遍漚汪國小八大特色站點！" />
+  <meta property="og:image" content="assets/images/img_01.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 3D WebGL Canvas Stage -->
+    <main class="stage" id="stage-container" aria-label="漚汪國小 3D 校園慢跑運動特色模型">
+      <!-- 3D Projected HTML Nameplates & Runner Badge -->
+      <div class="label-layer" id="label-layer"></div>
+    </main>
+
+    <!-- Top Floating Bar: Brand + Real-Time Weather -->
+    <header class="topbar">
+      <button class="brand" id="brand-home-btn" title="回到漚汪國小全景">
+        <span class="badge" aria-hidden="true">🏃</span>
+        <div>
+          <strong>漚汪國小探索園區</strong>
+          <small>臺南市將軍區・活力慢跑運動逛 3D 校園特色</small>
+        </div>
+      </button>
+
+      <div class="wx-group" aria-label="臺南將軍即時時間與天氣">
+        <div class="wx-clock">
+          <strong id="wx-date">-- 月 -- 日</strong>
+          <small id="wx-time">星期-・--:--</small>
+        </div>
+        <i class="wx-sep" aria-hidden="true"></i>
+        <span class="wx-icon" id="wx-icon" aria-hidden="true">☀️</span>
+        <div class="wx-temp">
+          <strong id="wx-main">載入天氣中…</strong>
+          <small id="wx-sub">臺南市將軍區</small>
+        </div>
+      </div>
+    </header>
+
+    <!-- Left Slide-Out Station List (左側八大特色站點導覽清單) -->
+    <aside class="station-nav" id="station-nav" aria-label="漚汪國小八大特色站點導覽清單">
+      <div class="station-nav-head">
+        <div class="station-nav-title">
+          <span aria-hidden="true">🏃</span>
+          <strong>校園八大特色站點</strong>
+          <span class="station-nav-badge">8 站</span>
+        </div>
+        <button class="x" id="station-nav-close-btn" title="收合清單">‹</button>
+      </div>
+      <div class="station-nav-actions">
+        <button id="station-nav-home-btn" title="返回校園全景視角">🏠 全景總覽</button>
+        <button id="station-nav-train-btn" title="切換跟隨活力跑者慢跑視角">🏃 陪跑逛校園</button>
+        <button id="station-nav-media-btn" class="span-2" title="開啟漚汪國小 64 篇媒體報導分類專區">📰 媒體報導分類總覽（64 篇）</button>
+      </div>
+      <ul class="station-nav-list" id="station-nav-list"></ul>
+      <div class="campus-models-strip" id="campus-models-strip"></div>
+    </aside>
+
+    <!-- Button to Re-open Left Station List when collapsed -->
+    <button class="station-nav-open-btn" id="station-nav-open-btn" style="display: none" title="展開左側特色站點清單">
+      📋 校園特色清單 ›
+    </button>
+
+    <!-- Bottom-Right Jogger Avatar Outfit Customizer Card (自訂慢跑分身裝扮) -->
+    <aside class="avatar-card" id="avatar-card" role="region" aria-label="自訂我的慢跑分身裝扮"></aside>
+    <button class="avatar-open-btn" id="avatar-open-btn" style="display: none" title="開啟慢跑分身裝扮">
+      👕 慢跑分身裝扮
+    </button>
+
+    <!-- Right Slide-In Detail Panel -->
+    <aside class="panel" id="detail-panel" style="display: none" aria-live="polite"></aside>
+
+    <!-- List View Overlay (全頁清單模式) -->
+    <section class="list-view" id="list-view" style="display: none" aria-label="漚汪國小八大特色清單">
+      <div class="list-head">
+        <div class="list-head-text">
+          <h2>🏃 漚汪國小八大校園特色站點一覽</h2>
+          <p>整合漚汪國小「校園特色網」完整架構：願景、課程創新、品格教育、多元社團、優質環境、學習花絮、榮譽榜與媒體報導</p>
+        </div>
+        <button class="list-back-btn" id="list-view-back-btn" type="button">🏃 返回 3D 園區</button>
+      </div>
+      <div class="cards" id="list-cards-grid"></div>
+    </section>
+
+    <!-- Categorized Media Reports Hub Overlay (媒體報導分類整理專區) -->
+    <section class="media-hub" id="media-hub" style="display: none" aria-label="漚汪國小媒體報導分類整理專區"></section>
+
+    <!-- Runner Station Stop Highlight Card (跑者抵達各站自動顯示重點介紹，按下繼續跑即消失) -->
+    <div class="runner-stop-card" id="runner-stop-card" style="display: none" role="status" aria-live="polite"></div>
+
+    <!-- Bottom Control Toolbar -->
+    <nav class="toolbar" id="bottom-toolbar" aria-label="3D 場景控制工具列"></nav>
+
+    <!-- Photo Lightbox Modal -->
+    <div class="lightbox" id="lightbox" style="display: none" role="dialog" aria-modal="true" aria-label="相片放大檢視">
+      <div class="lightbox-card">
+        <button class="x lightbox-close" id="lightbox-close-btn" title="關閉 (Esc)">×</button>
+        <div class="lightbox-img-wrap">
+          <img id="lightbox-img" src="" alt="漚汪國小活動照片" />
+        </div>
+        <div class="lightbox-meta">
+          <h4 id="lightbox-title"></h4>
+          <p id="lightbox-desc"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast" style="display: none" role="status" aria-live="polite"></div>
+
+    <!-- Handcrafted Intro Loading Screen -->
+    <div class="intro" id="intro-screen">
+      <div class="intro-card">
+        <div class="intro-TrainIcon" aria-hidden="true">🏃🏫</div>
+        <p class="eyebrow">Tainan Municipal Jiangjyun District Ouwang Elementary School</p>
+        <h1>漚汪國小探索園區</h1>
+        <p class="sub">活力慢跑運動逛校園・溫暖手作微縮 3D 校園特色互動模型</p>
+        <div class="intro-bar">
+          <i id="intro-bar-fill" style="width: 15%"></i>
+        </div>
+        <small id="intro-step-text">正在建置微縮校園・鋪設 PU 環校跑道與綠茵操場…</small>
+        <br />
+        <button class="intro-skip" id="intro-skip-btn">直接進入校園 ›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js r128 & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- Application Data, 3D Diorama Engine & UI Controller -->
+  <script src="data.js"></script>
+  <script src="scene3d.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
