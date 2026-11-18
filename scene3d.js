@@ -44,6 +44,10 @@ window.OWES_SCENE = (function () {
   let companionRunners = [];
   let runnerBadgeEl = null;
   let activeStopInfo = null;
+  let currentTargetStationId = "vision";
+  let stopOrbitClock = 0;
+  let stopArrivalTimer = 0;
+  let isStopSheetExpanded = false;
 
   let sunLight, hemiLight;
   let rainSystem = null;
@@ -4110,17 +4114,153 @@ window.OWES_SCENE = (function () {
       runnerBadgeBtnEl = badge;
     }
 
-    // Helper to show/hide the Station Stop Highlight Card (#runner-stop-card) with a Continue Button
+    // 3D Waypoint Marker (目標站點垂直呼吸光柱與浮動指標，陪跑時遠遠即可辨識目標站點)
+    const waypointBeaconGroup = new THREE.Group();
+    const beamOuterMat = new THREE.MeshBasicMaterial({
+      color: "#f97316",
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const beamOuter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.88, 6.4, 20, 1, true),
+      beamOuterMat
+    );
+    beamOuter.position.y = 3.3;
+    waypointBeaconGroup.add(beamOuter);
+
+    const beamCoreMat = new THREE.MeshBasicMaterial({
+      color: "#fff7ed",
+      transparent: true,
+      opacity: 0.44,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const beamCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.28, 6.6, 16, 1, true),
+      beamCoreMat
+    );
+    beamCore.position.y = 3.4;
+    waypointBeaconGroup.add(beamCore);
+
+    const ringMat1 = new THREE.MeshBasicMaterial({
+      color: "#f97316",
+      transparent: true,
+      opacity: 0.75,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const ringBase1 = new THREE.Mesh(
+      new THREE.TorusGeometry(1.15, 0.05, 8, 32),
+      ringMat1
+    );
+    ringBase1.rotation.x = Math.PI / 2;
+    ringBase1.position.y = 0.34;
+    waypointBeaconGroup.add(ringBase1);
+
+    const crystalMat = new THREE.MeshBasicMaterial({ color: "#fde047" });
+    const topCrystal = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.36, 0),
+      crystalMat
+    );
+    topCrystal.position.y = 6.8;
+    waypointBeaconGroup.add(topCrystal);
+    scene.add(waypointBeaconGroup);
+
+    // Top Mini Progress Pill (頂部輕量跑道進度條：即時顯示正前往第幾站、距離與 1~8 站小圓點)
+    const rppTextEl = document.getElementById("rpp-text");
+    const rppDistEl = document.getElementById("rpp-dist");
+    const rppDotsEl = document.getElementById("rpp-dots");
+    const rppDotBtns = [];
+    if (rppDotsEl) {
+      rppDotsEl.innerHTML = "";
+      stationStops.forEach((stStop, idx) => {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "rpp-dot";
+        dot.title = `第 ${idx + 1} 站：${stStop.station ? stStop.station.name : stStop.id}`;
+        dot.textContent = String(idx + 1);
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          nextStopIdx = idx;
+          runnerDist = (stStop.dist - 1.6 + runnerCurveLength) % runnerCurveLength;
+          isWaitingForContinue = false;
+          activeStopInfo = null;
+          isStopSheetExpanded = false;
+          stopArrivalTimer = 0;
+          setSquadPausedState(false);
+          hideRunnerStopHighlightCard();
+          if (window.OWES_APP && window.OWES_APP.collapsePanelsForRunning) {
+            window.OWES_APP.collapsePanelsForRunning(false);
+          }
+        });
+        rppDotsEl.appendChild(dot);
+        rppDotBtns.push(dot);
+      });
+    }
+
+    function updateRunProgressUI(targetIdx, remDistUnits, arrived) {
+      const stObj = stationStops[targetIdx] && stationStops[targetIdx].station;
+      if (!stObj) return;
+      currentTargetStationId = stObj.id;
+
+      // Position & tint 3D Waypoint Light Pillar at the target station
+      const [tx, , tz] = stObj.position;
+      waypointBeaconGroup.position.set(tx, 0, tz);
+      waypointBeaconGroup.visible = state.view !== "list" && state.view !== "media_hub";
+      beamOuterMat.color.set(stObj.color);
+      ringMat1.color.set(stObj.color);
+
+      if (rppTextEl) {
+        rppTextEl.textContent = arrived
+          ? `📍 已抵達：第 ${targetIdx + 1} 站 — ${stObj.name}`
+          : `🏃 正在前往：第 ${targetIdx + 1} 站 — ${stObj.name}`;
+      }
+      if (rppDistEl) {
+        const meters = Math.max(1, Math.round(remDistUnits * 3.2));
+        rppDistEl.textContent = arrived ? `（賞景導覽中）` : `（距離 ${meters}m）`;
+      }
+      rppDotBtns.forEach((btn, i) => {
+        btn.classList.toggle("done", i < targetIdx);
+        btn.classList.toggle("active", i === targetIdx && !arrived);
+        btn.classList.toggle("arrived", i === targetIdx && arrived);
+        if (i === targetIdx) {
+          btn.style.setProperty("--dc", stObj.color);
+        } else {
+          btn.style.removeProperty("--dc");
+        }
+      });
+    }
+
+    // Helper to show/hide the Two-Stage Bottom Sheet (#runner-stop-card)
     const stopCardEl = document.getElementById("runner-stop-card");
     let currentCardStationId = null;
     let isWaitingForContinue = false;
     let nextStopIdx = 0;
 
+    function setStopSheetStage(expanded) {
+      isStopSheetExpanded = Boolean(expanded);
+      if (stopCardEl) {
+        stopCardEl.classList.toggle("stage-expanded", isStopSheetExpanded);
+        stopCardEl.classList.toggle("stage-peek", !isStopSheetExpanded);
+      }
+      document.body.classList.toggle("has-stop-sheet-expanded", isStopSheetExpanded);
+      if (activeStopInfo && activeStopInfo.station) {
+        focusCameraOnStationFront(activeStopInfo.station);
+      }
+    }
+
     function resumeRunningToNextStation() {
       isWaitingForContinue = false;
       activeStopInfo = null;
+      isStopSheetExpanded = false;
+      stopArrivalTimer = 0;
       setSquadPausedState(false);
       hideRunnerStopHighlightCard();
+      if (window.OWES_APP && window.OWES_APP.collapsePanelsForRunning) {
+        window.OWES_APP.collapsePanelsForRunning(false);
+      }
       if (runnerBadgeBtnEl) {
         runnerBadgeBtnEl.innerHTML = `🏃 我的慢跑分身（點擊陪跑）`;
       }
@@ -4130,17 +4270,36 @@ window.OWES_SCENE = (function () {
       }
     }
 
+    // Compute station front camera with Mobile Distance Multiplier (1.35x~1.5x) & Screen-Space Target Y Offset
+    // so the 3D station sits in the top 45% golden zone of portrait phones!
+    function computeStationFrontCameraGoal(st, orbitAngle = 0) {
+      const [sx, , sz] = st.position;
+      const isMobile = window.innerWidth < 768;
+      const distMult = isMobile ? 1.42 : 1.0; // 1.35~1.5x distance multiplier on mobile
+      const baseDist = 13.8 * distMult;
+      const camH = isMobile ? (isStopSheetExpanded ? 13.2 : 12.2) : 8.8;
+      // Screen-Space Target Offset: shift lookAt Y downward on mobile so station rises into upper 45% of screen
+      const lookY = isMobile ? (isStopSheetExpanded ? -1.85 : -0.95) : 0.95;
+      const lookZOffset = isMobile ? 1.25 : 0.6;
+
+      return {
+        lookX: sx,
+        lookY,
+        lookZ: sz + lookZOffset,
+        posX: sx + Math.sin(orbitAngle) * baseDist,
+        posY: camH,
+        posZ: sz + Math.cos(orbitAngle) * baseDist
+      };
+    }
+
     function focusCameraOnStationFront(st) {
       if (!st || state.view === "list" || state.view === "media_hub") return;
-      const [sx, , sz] = st.position;
       userInteracting = false;
       cameraTransitioning = true;
       cameraTransitionTimer = 0;
-      // Position camera directly on the +Z (South/Front) side so the user clearly sees the front (正面) of the station
-      // and the runner facing directly toward the user!
-      const isMobile = window.innerWidth <= 760;
-      camTargetLook.set(sx, 1.15, sz + (isMobile ? 1.2 : 0.6));
-      camTargetPos.set(sx, isMobile ? 10.6 : 8.8, sz + (isMobile ? 16.5 : 13.8));
+      const goal = computeStationFrontCameraGoal(st, 0);
+      camTargetLook.set(goal.lookX, goal.lookY, goal.lookZ);
+      camTargetPos.set(goal.posX, goal.posY, goal.posZ);
     }
 
     function showRunnerStopHighlightCard(stopInfo) {
@@ -4152,29 +4311,36 @@ window.OWES_SCENE = (function () {
         return;
       }
 
+      // First 1.2 seconds upon arrival: pure scenic appreciation mode before sliding up Stage 1 Peek Bar
+      if (stopArrivalTimer < 1.2) {
+        stopCardEl.style.display = "none";
+        return;
+      }
+
       if (currentCardStationId !== st.id) {
         currentCardStationId = st.id;
-        const points = (st.features || []).slice(0, 3);
+        isStopSheetExpanded = false;
+
         stopCardEl.style.setProperty("--c", st.color);
+        stopCardEl.classList.remove("stage-expanded");
+        stopCardEl.classList.add("stage-peek");
+        document.body.classList.remove("has-stop-sheet-expanded");
+
         stopCardEl.innerHTML = `
-          <div class="rsc-body">
-            <div class="rsc-head">
-              <div class="rsc-title-group">
-                <div class="rsc-icon">${st.icon}</div>
-                <div>
-                  <span class="rsc-kicker">📍 跑者抵達定點・${st.code}</span>
+          <!-- Lightweight Peek Bar (110px~130px, 80%+ screen unobstructed!) -->
+          <div class="rsc-peek-bar">
+            <div class="rsc-peek-info">
+              <div class="rsc-icon">${st.icon}</div>
+              <div class="rsc-peek-text">
+                <div class="rsc-peek-title-row">
+                  <span class="rsc-kicker">${st.code}</span>
                   <h4>${st.name}</h4>
                 </div>
+                <p class="rsc-tagline">${st.tagline}</p>
               </div>
-              <button class="x rsc-close-x" id="rsc-close-btn" title="關閉介紹並繼續跑">×</button>
             </div>
-            <p class="rsc-tagline">${st.tagline}</p>
-            <ul class="rsc-points">
-              ${points.map((pt) => `<li>${pt}</li>`).join("")}
-            </ul>
-            <div class="rsc-foot">
-              <button class="rsc-more-btn secondary" id="rsc-open-station-btn">📖 查看完整介紹</button>
-              <button class="rsc-continue-btn" id="rsc-continue-btn">🏃 關閉介紹・繼續跑往下一站 ▶</button>
+            <div class="rsc-peek-actions">
+              <button class="rsc-continue-btn" id="rsc-continue-btn" type="button">🏃 繼續跑下一站 ▶</button>
             </div>
           </div>
         `;
@@ -4187,22 +4353,6 @@ window.OWES_SCENE = (function () {
             resumeRunningToNextStation();
           });
         }
-
-        const closeBtn = document.getElementById("rsc-close-btn");
-        if (closeBtn) {
-          closeBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            resumeRunningToNextStation();
-          });
-        }
-
-        const openBtn = document.getElementById("rsc-open-station-btn");
-        if (openBtn) {
-          openBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (window.OWES_APP) window.OWES_APP.selectStation(st.id);
-          });
-        }
       } else {
         stopCardEl.style.display = "block";
       }
@@ -4210,8 +4360,11 @@ window.OWES_SCENE = (function () {
 
     function hideRunnerStopHighlightCard() {
       currentCardStationId = null;
+      isStopSheetExpanded = false;
+      document.body.classList.remove("has-stop-sheet-expanded");
       if (stopCardEl) {
         stopCardEl.style.display = "none";
+        stopCardEl.classList.remove("stage-expanded", "stage-peek");
       }
     }
 
@@ -4230,31 +4383,58 @@ window.OWES_SCENE = (function () {
     const RUNNER_SPEED = 1.42;
     runnerDist = (stationStops[0].dist - 2.0 + runnerCurveLength) % runnerCurveLength;
 
-    dynamicCallbacks.push((dt) => {
+    // Initialize progress pill for Station 01 on boot
+    updateRunProgressUI(0, 2.0, false);
+
+    dynamicCallbacks.push((dt, elapsed) => {
+      // Animate 3D Waypoint Light Pillar (breathing beam + expanding ring + spinning crystal)
+      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 3.6);
+      beamOuter.scale.set(0.92 + pulse * 0.22, 1, 0.92 + pulse * 0.22);
+      beamOuterMat.opacity = 0.15 + pulse * 0.14;
+      beamCoreMat.opacity = 0.32 + pulse * 0.22;
+      const ringWave = (elapsed * 0.85) % 1;
+      ringBase1.scale.setScalar(0.75 + ringWave * 1.45);
+      ringMat1.opacity = 0.78 * (1 - ringWave);
+      topCrystal.rotation.y = elapsed * 2.2;
+      topCrystal.position.y = 6.65 + Math.sin(elapsed * 3.2) * 0.24;
+
+      const targetStop = stationStops[nextStopIdx];
+      const remDist =
+        (targetStop.dist - runnerDist + runnerCurveLength) % runnerCurveLength;
+
       if (state.animate) {
         if (isWaitingForContinue) {
+          stopArrivalTimer += dt;
+          updateRunProgressUI(nextStopIdx, 0, true);
           showRunnerStopHighlightCard(activeStopInfo);
         } else {
-          const targetStop = stationStops[nextStopIdx];
-          const remDist =
-            (targetStop.dist - runnerDist + runnerCurveLength) % runnerCurveLength;
           const stepDist = dt * RUNNER_SPEED;
 
           if (remDist <= stepDist || remDist > runnerCurveLength - 0.05) {
-            // Arrived at station stop! Stop until user presses the button, face the user, and frame the station's front!
+            // Arrived at station stop! Enter 1.2s scenic appreciation mode first, then slide up Stage 1 Peek Bar
             runnerDist = targetStop.dist;
             isWaitingForContinue = true;
             activeStopInfo = targetStop;
+            stopArrivalTimer = 0;
+            stopOrbitClock = 0;
+            isStopSheetExpanded = false;
             setSquadPausedState(true);
+            if (window.OWES_APP && window.OWES_APP.collapsePanelsForRunning) {
+              window.OWES_APP.collapsePanelsForRunning(true);
+            }
             focusCameraOnStationFront(targetStop.station);
+            updateRunProgressUI(nextStopIdx, 0, true);
             showRunnerStopHighlightCard(activeStopInfo);
             if (runnerBadgeBtnEl && targetStop.station) {
               runnerBadgeBtnEl.innerHTML = `📍 已抵達「${targetStop.station.short}」（點擊繼續跑）`;
             }
           } else {
             runnerDist = (runnerDist + stepDist) % runnerCurveLength;
+            updateRunProgressUI(nextStopIdx, remDist - stepDist, false);
           }
         }
+      } else {
+        updateRunProgressUI(nextStopIdx, isWaitingForContinue ? 0 : remDist, isWaitingForContinue);
       }
 
       const placeByArcDist = (obj, backDist, lateralOffset = 0) => {
@@ -4474,7 +4654,22 @@ window.OWES_SCENE = (function () {
       (pal.winGlow - litWindowMat.emissiveIntensity) * lerpFactor;
   }
 
-  // Camera Target Computation
+  // Dynamic FOV Compensation for Mobile Portrait Screens (aspect < 1 自動放大垂直 FOV 補償水平視野)
+  function updateCameraFovForAspect() {
+    if (!camera) return;
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
+    const aspect = w / h;
+    camera.aspect = aspect;
+    if (w < 768 || aspect < 1) {
+      camera.fov = Math.min(52, Math.max(38, 32 / Math.pow(Math.min(1, aspect), 0.46)));
+    } else {
+      camera.fov = 32;
+    }
+    camera.updateProjectionMatrix();
+  }
+
+  // Camera Target Computation (with Mobile 1.35x~1.5x Distance Multiplier & Screen-Space Target Y Offset)
   function recomputeCameraGoal() {
     userInteracting = false;
     cameraTransitioning = true;
@@ -4484,10 +4679,12 @@ window.OWES_SCENE = (function () {
       const st = window.OWES_DATA.stations.find((s) => s.id === state.selected);
       if (st) {
         const [x, , z] = st.position;
-        const isMobile = window.innerWidth <= 760;
+        const isMobile = window.innerWidth < 768;
+        const distMult = isMobile ? 1.42 : 1.0;
         const offsetX = isMobile ? 0 : 1.4;
-        camTargetLook.set(x + offsetX, 1.2, z + (isMobile ? 1.5 : 0.4));
-        camTargetPos.set(x + offsetX + 2.4, isMobile ? 13.5 : 10.8, z + (isMobile ? 16.5 : 13.8));
+        // Screen-space target offset: shift lookAt Y downward on mobile so station sits in upper 45% golden zone
+        camTargetLook.set(x + offsetX, isMobile ? -1.1 : 1.1, z + (isMobile ? 1.3 : 0.4));
+        camTargetPos.set(x + offsetX + (isMobile ? 0 : 2.4), isMobile ? 13.0 : 10.8, z + 13.8 * distMult);
         return;
       }
     }
@@ -4496,9 +4693,9 @@ window.OWES_SCENE = (function () {
       camTargetLook.set(0, 0.5, 0.0);
       camTargetPos.set(0, 52, 5.0);
     } else {
-      const isMobile = window.innerWidth <= 760;
-      camTargetLook.set(0, 1.0, 1.0);
-      camTargetPos.set(0, isMobile ? 38 : 30, isMobile ? 46 : 38);
+      const isMobile = window.innerWidth < 768;
+      camTargetLook.set(0, isMobile ? -0.4 : 1.0, 1.0);
+      camTargetPos.set(0, isMobile ? 42 : 30, isMobile ? 52 : 38);
     }
   }
 
@@ -4512,6 +4709,7 @@ window.OWES_SCENE = (function () {
       const show = state.showLabels && state.view !== "list";
       info.btn.classList.toggle("hidden", !show);
       info.btn.classList.toggle("on", state.selected === id || state.hovered === id);
+      info.btn.classList.toggle("target-waypoint", id === currentTargetStationId);
       if (!show) return;
 
       tempV.copy(info.worldPos);
@@ -4660,6 +4858,7 @@ window.OWES_SCENE = (function () {
     buildFlyingWhiteEgrets();
     buildSkyAndWeather();
 
+    updateCameraFovForAspect();
     recomputeCameraGoal();
 
     renderer.domElement.addEventListener("pointermove", onPointerMove);
@@ -4667,8 +4866,7 @@ window.OWES_SCENE = (function () {
     renderer.domElement.addEventListener("pointerup", onPointerUp);
 
     window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
+      updateCameraFovForAspect();
       renderer.setSize(window.innerWidth, window.innerHeight);
       recomputeCameraGoal();
     });
@@ -4704,23 +4902,64 @@ window.OWES_SCENE = (function () {
       dynamicCallbacks.forEach((fn) => fn(dt, elapsed));
       updateLighting(dt);
 
-      // Runner-follow camera mode ("陪跑視角")
-      if (state.view === "train" && leadRunnerGroup && !state.selected) {
-        if (activeStopInfo && activeStopInfo.station) {
-          const [sx, , sz] = activeStopInfo.station.position;
-          camTargetLook.set(sx, 1.15, sz + 0.6);
-          camTargetPos.set(sx, 8.8, sz + 13.8);
-        } else {
-          const aheadDist = (runnerDist + 2.8) % runnerCurveLength;
-          const behindDist = (runnerDist - 5.2 + runnerCurveLength) % runnerCurveLength;
-          const lookPt = runnerCurve.getPointAt(aheadDist / runnerCurveLength);
-          const camPt = runnerCurve.getPointAt(behindDist / runnerCurveLength);
+      // 1. Station Arrival Camera: Upper-45% Golden Framing + Gentle Orbit (±15° sine wave sway)
+      if (activeStopInfo && activeStopInfo.station && !state.selected && state.view !== "bird" && !userInteracting) {
+        stopOrbitClock += dt;
+        const maxOrbitRad = (15 * Math.PI) / 180; // ±15° Gentle Orbit
+        const orbitAngle = Math.sin(stopOrbitClock * 0.55) * maxOrbitRad;
+        const [sx, , sz] = activeStopInfo.station.position;
+        const isMobile = window.innerWidth < 768;
+        const distMult = isMobile ? 1.42 : 1.0; // 1.35~1.5x mobile distance multiplier
+        const baseDist = 13.8 * distMult;
+        const camH = isMobile ? (isStopSheetExpanded ? 13.2 : 12.2) : 8.8;
+        const lookY = isMobile ? (isStopSheetExpanded ? -1.85 : -0.95) : 0.95;
+        const lookZOff = isMobile ? 1.25 : 0.6;
 
-          camTargetLook.set(lookPt.x, 1.15, lookPt.z);
-          camTargetPos.set(camPt.x + 2.2, 5.4, camPt.z + 3.2);
+        camTargetLook.set(sx, lookY, sz + lookZOff);
+        camTargetPos.set(
+          sx + Math.sin(orbitAngle) * baseDist,
+          camH,
+          sz + Math.cos(orbitAngle) * baseDist
+        );
+        camera.position.lerp(camTargetPos, Math.min(1, dt * 3.6));
+        currentLook.lerp(camTargetLook, Math.min(1, dt * 4.5));
+        controls.target.copy(currentLook);
+      } else if (state.view === "train" && leadRunnerGroup && !state.selected) {
+        // 2. Runner-Follow Look-Ahead Camera (35% interpolation between runner & target station + elevated pitch)
+        const targetSt = window.OWES_DATA.stations.find((s) => s.id === currentTargetStationId);
+        const rPos = leadRunnerGroup.position;
+        const [tx, , tz] = targetSt ? targetSt.position : [0, 0, 0];
+        const isMobile = window.innerWidth < 768;
+
+        // 35% Look-Ahead Offset between runner current position and destination station
+        const lookAheadRatio = 0.36;
+        const lookX = rPos.x + (tx - rPos.x) * lookAheadRatio;
+        const lookZ = rPos.z + (tz - rPos.z) * lookAheadRatio;
+
+        let dirX = lookX - rPos.x;
+        let dirZ = lookZ - rPos.z;
+        const dirLen = Math.hypot(dirX, dirZ);
+        if (dirLen > 0.001) {
+          dirX /= dirLen;
+          dirZ /= dirLen;
+        } else {
+          const uNow = ((runnerDist % runnerCurveLength) + runnerCurveLength) % runnerCurveLength / runnerCurveLength;
+          const tan = runnerCurve.getTangentAt(uNow);
+          dirX = tan.x;
+          dirZ = tan.z;
         }
-        camera.position.lerp(camTargetPos, Math.min(1, dt * 3.8));
-        currentLook.lerp(camTargetLook, Math.min(1, dt * 4.8));
+
+        const backDist = isMobile ? 11.4 : 8.0;
+        const camHeight = isMobile ? 9.6 : 6.6;
+        // Elevated camera looking slightly downward at the 36% look-ahead point so runner is in lower frame & target station is in upper-mid frame
+        camTargetLook.set(lookX, isMobile ? 0.55 : 1.0, lookZ);
+        camTargetPos.set(
+          rPos.x - dirX * backDist + (-dirZ * 1.35),
+          camHeight,
+          rPos.z - dirZ * backDist + (dirX * 1.35)
+        );
+        camera.position.lerp(camTargetPos, Math.min(1, dt * 3.6));
+        currentLook.lerp(camTargetLook, Math.min(1, dt * 4.6));
         controls.target.copy(currentLook);
       } else if (!userInteracting && cameraTransitioning) {
         cameraTransitionTimer += dt;

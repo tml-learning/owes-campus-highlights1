@@ -391,6 +391,10 @@ window.OWES_APP = (function () {
       uiState.view = "panorama";
       SCENE.setView("panorama");
     }
+    if (id && window.innerWidth <= 900) {
+      uiState.showStationNav = false;
+      uiState.showAvatarCard = false;
+    }
     uiState.selected = id;
     uiState.activeTab = tab;
     uiState.mediaScope = id === "media" || id === "vision" ? "all" : "station";
@@ -1064,6 +1068,10 @@ window.OWES_APP = (function () {
         uiState.view = v;
         SCENE.setView(v);
         if (v === "train") {
+          uiState.showStationNav = false;
+          if (window.innerWidth <= 900) {
+            uiState.showAvatarCard = false;
+          }
           showToast("🏃 已切換為「陪跑視角」，跟著漚汪小跑者慢跑運動逛校園各站！");
         }
         renderPanel();
@@ -1095,6 +1103,12 @@ window.OWES_APP = (function () {
     document.body.classList.remove("has-panel");
     SCENE.setSelected(null);
     uiState.view = uiState.view === "train" ? "panorama" : "train";
+    if (uiState.view === "train") {
+      uiState.showStationNav = false;
+      if (window.innerWidth <= 900) {
+        uiState.showAvatarCard = false;
+      }
+    }
     SCENE.setView(uiState.view);
     showToast(
       uiState.view === "train"
@@ -1105,6 +1119,25 @@ window.OWES_APP = (function () {
     renderMediaHub();
     renderStationNav();
     renderHonorRoll();
+    renderGuideCard();
+    renderToolbar();
+  }
+
+  // Auto-collapse sidebars and detail drawers during running / station arrival so 100% of screen belongs to 3D view
+  function collapsePanelsForRunning(isArrival = false) {
+    if (!isArrival && uiState.selected) {
+      uiState.selected = null;
+      document.body.classList.remove("has-panel");
+      SCENE.setSelected(null);
+      renderPanel();
+    }
+    if (!isArrival || window.innerWidth <= 900 || uiState.view === "train") {
+      uiState.showStationNav = false;
+    }
+    if (window.innerWidth <= 900) {
+      uiState.showAvatarCard = false;
+    }
+    renderStationNav();
     renderGuideCard();
     renderToolbar();
   }
@@ -1274,7 +1307,9 @@ window.OWES_APP = (function () {
     selectStation,
     openMediaHub,
     toggleTrainView,
-    exitTrainFollowOnDrag
+    exitTrainFollowOnDrag,
+    collapsePanelsForRunning,
+    openPhotoLightbox: openLightbox
   };
 })();
 

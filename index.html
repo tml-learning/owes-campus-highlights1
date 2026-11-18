@@ -21,7 +21,7 @@
       <div class="label-layer" id="label-layer"></div>
     </main>
 
-    <!-- Top Floating Bar: Brand -->
+    <!-- Top Floating Bar: Brand + Mini Runner Progress Pill -->
     <header class="topbar">
       <button class="brand" id="brand-home-btn" title="回到漚汪國小全景">
         <span class="badge" aria-hidden="true">🏃</span>
@@ -30,6 +30,15 @@
           <small>臺南市將軍區・活力慢跑運動逛 3D 校園特色</small>
         </div>
       </button>
+
+      <!-- Mini Progress Pill (頂部輕量跑道進度條：顯示正前往第幾站、距離與 1~8 站小圓點進度) -->
+      <div class="run-progress-pill" id="run-progress-pill" role="status" aria-live="polite">
+        <div class="rpp-main">
+          <span class="rpp-text" id="rpp-text">🏃 正在前往：第 1 站 — 學校願景站</span>
+          <span class="rpp-dist" id="rpp-dist">距離 --m</span>
+        </div>
+        <div class="rpp-dots" id="rpp-dots" aria-label="八大特色站點慢跑進度"></div>
+      </div>
     </header>
 
     <!-- Left Slide-Out Station List (左側八大特色站點導覽清單) -->
