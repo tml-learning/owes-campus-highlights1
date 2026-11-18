@@ -4219,7 +4219,7 @@ window.OWES_SCENE = (function () {
       }
       if (rppDistEl) {
         const meters = Math.max(1, Math.round(remDistUnits * 3.2));
-        rppDistEl.textContent = arrived ? `（賞景導覽中）` : `（距離 ${meters}m）`;
+        rppDistEl.textContent = arrived ? `（點擊繼續跑 ▶）` : `（距離 ${meters}m）`;
       }
       rppDotBtns.forEach((btn, i) => {
         btn.classList.toggle("done", i < targetIdx);
@@ -4235,9 +4235,22 @@ window.OWES_SCENE = (function () {
 
     // Helper to show/hide the Two-Stage Bottom Sheet (#runner-stop-card)
     const stopCardEl = document.getElementById("runner-stop-card");
+    const runProgressPillEl = document.getElementById("run-progress-pill");
     let currentCardStationId = null;
+    let dismissedCardStationId = null;
     let isWaitingForContinue = false;
     let nextStopIdx = 0;
+
+    if (runProgressPillEl) {
+      runProgressPillEl.style.cursor = "pointer";
+      runProgressPillEl.title = "點擊可繼續跑往下一站";
+      runProgressPillEl.addEventListener("click", (e) => {
+        if (e.target.closest && e.target.closest(".rpp-dot")) return;
+        if (isWaitingForContinue) {
+          resumeRunningToNextStation();
+        }
+      });
+    }
 
     function setStopSheetStage(expanded) {
       isStopSheetExpanded = Boolean(expanded);
@@ -4312,7 +4325,7 @@ window.OWES_SCENE = (function () {
       }
 
       // First 1.2 seconds upon arrival: pure scenic appreciation mode before sliding up Stage 1 Peek Bar
-      if (stopArrivalTimer < 1.2) {
+      if (stopArrivalTimer < 1.2 || dismissedCardStationId === st.id) {
         stopCardEl.style.display = "none";
         return;
       }
@@ -4338,6 +4351,7 @@ window.OWES_SCENE = (function () {
                 </div>
                 <p class="rsc-tagline">${st.tagline}</p>
               </div>
+              <button class="x rsc-close-x" id="rsc-close-btn" type="button" aria-label="關閉對話框" title="關閉對話框">×</button>
             </div>
             <div class="rsc-peek-actions">
               <button class="rsc-continue-btn" id="rsc-continue-btn" type="button">🏃 繼續跑下一站 ▶</button>
@@ -4345,6 +4359,15 @@ window.OWES_SCENE = (function () {
           </div>
         `;
         stopCardEl.style.display = "block";
+
+        const closeBtn = document.getElementById("rsc-close-btn");
+        if (closeBtn) {
+          closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            dismissedCardStationId = st.id;
+            stopCardEl.style.display = "none";
+          });
+        }
 
         const contBtn = document.getElementById("rsc-continue-btn");
         if (contBtn) {
@@ -4360,6 +4383,7 @@ window.OWES_SCENE = (function () {
 
     function hideRunnerStopHighlightCard() {
       currentCardStationId = null;
+      dismissedCardStationId = null;
       isStopSheetExpanded = false;
       document.body.classList.remove("has-stop-sheet-expanded");
       if (stopCardEl) {
